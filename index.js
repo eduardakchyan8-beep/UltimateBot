@@ -26,11 +26,12 @@ const client = new Client({
 const XP_ROLES = ['1443238536496156672', '1443237324405346356'];
 
 const DB_PATH = './database.json';
-let db = { users: {} };
+let db = { users: {}, market: [] };
 if (fs.existsSync(DB_PATH)) {
     try {
         db = JSON.parse(fs.readFileSync(DB_PATH, 'utf8'));
-    } catch (e) { db = { users: {} }; }
+        if (!db.market) db.market = [];
+    } catch (e) { db = { users: {}, market: [] }; }
 }
 
 function saveDB() {
@@ -93,6 +94,12 @@ const commands = [
     new SlashCommandBuilder().setName('clear').setDescription('[ADMIN] Удалить сообщения')
         .addIntegerOption(opt => opt.setName('amount').setDescription('Количество сообщений (1-100)').setRequired(true))
         .setDefaultMemberPermissions(0),
+    new SlashCommandBuilder().setName('sell').setDescription('Выставить предмет на продажу игрокам (комиссия 5%)')
+        .addIntegerOption(opt => opt.setName('id').setDescription('ID предмета из /rank').setRequired(true))
+        .addIntegerOption(opt => opt.setName('price').setDescription('Цена продажи').setRequired(true)),
+    new SlashCommandBuilder().setName('market').setDescription('Посмотреть товары от других игроков'),
+    new SlashCommandBuilder().setName('marketbuy').setDescription('Купить товар на рынке')
+        .addIntegerOption(opt => opt.setName('id').setDescription('ID товара на рынке').setRequired(true)),
 ].map(c => c.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
@@ -409,6 +416,77 @@ async function handleCommand(author, commandName, args, isSlash, interaction = n
                     try { tempMsg.delete(); } catch(e) {}
                 }, 3000);
             }
+        }
+        else if (commandName === 'sell') {
+            const invId = isSlash ? interaction.options.getInteger('id') : parseInt(args[0]);
+            const price = isSlash ? interaction.options.getInteger('price') : parseInt(args[1]);
+            
+            if (isNaN(invId) || isNaN(price) || price < 1) return reply('❌ Неверный ID или цена!');
+            
+            const item = user.inventory[invId - 1];
+            if (!item) return reply(`❌ У вас нет предмета под номером **${invId}**`);
+            
+            // Remove from inventory
+            user.inventory.splice(invId - 1, 1);
+            
+            // Add to market
+            const marketItem = {
+                id: Date.now(), // Unique ID for marketplace
+                sellerId: author.id,
+                sellerName: author.username,
+                item: item,
+                price: price
+            };
+            db.market.push(marketItem);
+            
+            await reply(`✅ Вы выставили **${item.name}** на рынок за **${price.toLocaleString()}** монет! (Комиссия при продаже: 5%)`);
+        }
+        else if (commandName === 'market') {
+            if (db.market.length === 0) return reply('🛒 На рынке пока нет товаров от игроков.');
+            
+            let list = db.market.map((m, i) => {
+                return `**${i + 1}.** ${m.item.emoji} **${m.item.name}** | Продавец: **${m.sellerName}** | Цена: **${m.price.toLocaleString()}** монет`;
+            }).join('\n');
+            
+            const embed = new EmbedBuilder()
+                .setTitle('🛒 Рынок Игроков')
+                .setColor('#FFD700')
+                .setDescription(list)
+                .setFooter({ text: 'Используйте /marketbuy [номер], чтобы купить' });
+                
+            await reply({ embeds: [embed] }, true);
+        }
+        else if (commandName === 'marketbuy') {
+            const marketIndex = (isSlash ? interaction.options.getInteger('id') : parseInt(args[0])) - 1;
+            const marketItem = db.market[marketIndex];
+            
+            if (!marketItem) return reply('❌ Товар не найден на рынке!');
+            if (marketItem.sellerId === author.id) return reply('❌ Вы не можете купить свой собственный товар!');
+            if (user.balance < marketItem.price) return reply('❌ У вас недостаточно монет!');
+            
+            // Process purchase
+            user.balance -= marketItem.price;
+            
+            const tax = Math.floor(marketItem.price * 0.05);
+            const sellerGet = marketItem.price - tax;
+            
+            // Pay seller (if exists in db)
+            checkUser(marketItem.sellerId);
+            db.users[marketItem.sellerId].balance += sellerGet;
+            
+            // Give item to buyer
+            user.inventory.push(marketItem.item);
+            
+            // Remove from market
+            db.market.splice(marketIndex, 1);
+            
+            await reply(`✅ Вы успешно купили **${marketItem.item.name}** за **${marketItem.price.toLocaleString()}** монет!`);
+            
+            // Notify seller in DM if possible
+            try {
+                const sellerUser = await client.users.fetch(marketItem.sellerId);
+                await sellerUser.send(`💰 Ваш товар **${marketItem.item.name}** был куплен! Вы получили **${sellerGet.toLocaleString()}** монет (после вычета комиссии 5%).`);
+            } catch (e) {}
         }
     } catch (err) {
 
