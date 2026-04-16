@@ -58,7 +58,6 @@ const shopItems = [
     { id: 2, name: "💎 Premium Статус", price: 10000, roleId: '1494333070403305542', rarity: 'Мифический', emoji: '🟣' },
     { id: 3, name: "🏎️ Авто: BMW M4", price: 50000, rarity: 'Редкий', emoji: '🔵' },
     { id: 4, name: "🏠 Особняк", price: 100000, rarity: 'Мифический', emoji: '🟣' },
-    { id: 5, name: "💀 Голова <@1119121474951839774>", price: 0, rarity: 'Легендарный', emoji: '🟡' }
 ];
 
 const commands = [
@@ -99,6 +98,8 @@ const commands = [
         .addIntegerOption(opt => opt.setName('price').setDescription('Цена продажи').setRequired(true)),
     new SlashCommandBuilder().setName('market').setDescription('Посмотреть товары от других игроков'),
     new SlashCommandBuilder().setName('marketbuy').setDescription('Купить товар на рынке')
+        .addIntegerOption(opt => opt.setName('id').setDescription('ID товара на рынке').setRequired(true)),
+    new SlashCommandBuilder().setName('marketcancel').setDescription('Снять свой товар с продажи и вернуть в инвентарь')
         .addIntegerOption(opt => opt.setName('id').setDescription('ID товара на рынке').setRequired(true)),
 ].map(c => c.toJSON());
 
@@ -487,6 +488,21 @@ async function handleCommand(author, commandName, args, isSlash, interaction = n
                 const sellerUser = await client.users.fetch(marketItem.sellerId);
                 await sellerUser.send(`💰 Ваш товар **${marketItem.item.name}** был куплен! Вы получили **${sellerGet.toLocaleString()}** монет (после вычета комиссии 5%).`);
             } catch (e) {}
+        }
+        else if (commandName === 'marketcancel') {
+            const marketIndex = (isSlash ? interaction.options.getInteger('id') : parseInt(args[0])) - 1;
+            const marketItem = db.market[marketIndex];
+            
+            if (!marketItem) return reply('❌ Товар не найден на рынке!');
+            if (marketItem.sellerId !== author.id) return reply('❌ Вы можете снимать с продажи только свои собственные товары!');
+            
+            // Return to inventory
+            user.inventory.push(marketItem.item);
+            
+            // Remove from market
+            db.market.splice(marketIndex, 1);
+            
+            await reply(`✅ Товар **${marketItem.item.name}** успешно снят с продажи и возвращен в ваш инвентарь!`);
         }
     } catch (err) {
 
