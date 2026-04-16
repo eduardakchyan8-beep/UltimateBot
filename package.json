@@ -1,6 +1,13 @@
 {
+  "name": "ultimate-discord-bot",
+  "version": "1.0.0",
+  "description": "Discord Economy Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
-    "discord.js": "^14.26.3",
-    "dotenv": "^17.4.2"
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5"
   }
 }
