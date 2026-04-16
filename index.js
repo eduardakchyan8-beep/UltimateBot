@@ -1,6 +1,13 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, ActivityType, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const fs = require('fs');
+const http = require('http');
+
+// Мини-сервер для UptimeRobot (чтобы бот не спал)
+http.createServer((req, res) => {
+    res.write('Bot is Online!');
+    res.end();
+}).listen(process.env.PORT || 3000);
 
 const client = new Client({
     intents: [
